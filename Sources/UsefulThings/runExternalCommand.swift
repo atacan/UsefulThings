@@ -12,6 +12,7 @@ enum CommandError: Error, LocalizedError {
     case ffprobeNotFound
     case launchFailed(underlyingError: Error)
     case executionFailed(statusCode: Int32, output: String, errorOutput: String)
+    case noOutput
 
     var errorDescription: String? {
         switch self {
@@ -24,6 +25,8 @@ enum CommandError: Error, LocalizedError {
             if !output.isEmpty { description += "\nOutput: \(output)" }
             if !errorOutput.isEmpty { description += "\nError: \(errorOutput)" }
             return description
+        case .noOutput:
+            return "No output from command"
         }
     }
 }
@@ -56,6 +59,7 @@ private func findFfprobeExecutablePath() -> String? {
 ///   - workingDirectory: The working directory for the command.
 /// - Throws: `CommandError` if the command fails to launch or exits with a non-zero status.
 /// - Returns: The standard output of the command.
+@discardableResult
 public func runExternalCommand(
     executablePath: String,
     arguments: [String],

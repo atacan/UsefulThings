@@ -17,7 +17,11 @@ public func runCommand(_ command: String, workingDirectory: String? = nil) throw
     try task.run()
 
     let data = pipe.fileHandleForReading.readDataToEndOfFile()
-    let output = String(data: data, encoding: .utf8)!
+    let output = String(data: data, encoding: .utf8)
+
+    guard let output else {
+        throw CommandError.noOutput
+    }
 
     return output.trimmingCharacters(in: .whitespacesAndNewlines)
 }
