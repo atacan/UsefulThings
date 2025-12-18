@@ -38,7 +38,8 @@ public func pollUntil<T>(
 
         // Exponential backoff with jitter
         let jitter = Double.random(in: 0 ... (currentDelay / 2))
-        try await Task.sleep(for: .seconds(currentDelay + jitter))
+        let nanoseconds = UInt64((currentDelay + jitter) * 1_000_000_000)
+        try await Task.sleep(nanoseconds: nanoseconds)
 
         currentRetry += 1
         currentDelay = min(currentDelay * 2, configuration.maxDelay)

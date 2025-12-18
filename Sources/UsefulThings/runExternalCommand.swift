@@ -1,9 +1,4 @@
-//
-// https://github.com/atacan
-// 25.05.25
-	
-
-
+#if os(macOS)
 import Foundation
 
 // MARK: - Error Handling
@@ -151,3 +146,4 @@ public func runFfprobe(
 //} catch {
 //    print("Error getting duration: \(error.localizedDescription)")
 //}
+#endif

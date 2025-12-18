@@ -5,7 +5,7 @@ import PackageDescription
 
 let package = Package(
     name: "UsefulThings",
-    platforms: [.macOS("14.0"), .iOS("17.0"), .watchOS("10.0"), .tvOS("17.0"), .visionOS("1.0")],
+    platforms: [.macOS("11.0"), .iOS("13.0"), .watchOS("10.0"), .tvOS("17.0"), .visionOS("1.0")],
     products: [
         // Products define the executables and libraries a package produces, making them visible to other packages.
         .library(
