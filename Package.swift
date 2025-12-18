@@ -5,7 +5,10 @@ import PackageDescription
 
 let package = Package(
     name: "UsefulThings",
-    platforms: [.macOS("11.0"), .iOS("13.0"), .watchOS("10.0"), .tvOS("17.0"), .visionOS("1.0")],
+    // Because we use FileHandle and it has
+    // @available(macOS 10.15.4, iOS 13.4, watchOS 6.2, tvOS 13.4, *)
+    // public func read(upToCount count: Int) throws -> Data?
+    platforms: [.macOS("11.0"), .iOS("14.0"), .watchOS("7.0"), .tvOS("14.0"), .visionOS("1.0")],
     products: [
         // Products define the executables and libraries a package produces, making them visible to other packages.
         .library(
