@@ -1,3 +1,4 @@
+#if os(macOS)
 import Foundation
 
 public func runCommand(_ command: String, workingDirectory: String? = nil) throws -> String {
@@ -25,3 +26,4 @@ public func runCommand(_ command: String, workingDirectory: String? = nil) throw
 
     return output.trimmingCharacters(in: .whitespacesAndNewlines)
 }
+#endif
