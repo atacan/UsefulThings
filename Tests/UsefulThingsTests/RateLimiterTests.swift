@@ -752,7 +752,7 @@ struct ConcurrencyLimiterTests {
 
         await limiter.reset()
 
-        let result = try await task.value
+        let result = await task.value
         #expect(result == "cancelled")
     }
 

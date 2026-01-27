@@ -280,7 +280,7 @@ struct RetryAPITests {
                 throw TestError.networkError
             }
             Issue.record("Should have thrown")
-        } catch let failure as CircuitBreakerFailure<TestError> {
+        } catch let failure {
             switch failure {
             case .operationFailed(let error):
                 #expect(error == .networkError)
