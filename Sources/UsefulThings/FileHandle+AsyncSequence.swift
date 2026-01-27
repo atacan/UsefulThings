@@ -8,7 +8,7 @@ extension FileHandle: @retroactive AsyncSequence {
         private let chunkSize: Int
         private var isClosed = false
 
-        init(fileHandle: FileHandle, chunkSize: Int = 32_768) {
+        init(fileHandle: FileHandle, chunkSize: Int = 65_536) {
             self.fileHandle = fileHandle
             self.chunkSize = chunkSize
         }
@@ -16,14 +16,14 @@ extension FileHandle: @retroactive AsyncSequence {
         public mutating func next() async throws -> ArraySlice<UInt8>? {
             guard !isClosed else { return nil }
 
-            let data = try fileHandle.read(upToCount: chunkSize)
-            if data?.isEmpty ?? true {
+            guard let data = try fileHandle.read(upToCount: chunkSize),
+                  !data.isEmpty else {
                 isClosed = true
-                try fileHandle.close()
+                try? fileHandle.close()
                 return nil
             }
 
-            return ArraySlice(data!)
+             return ArraySlice(data)
         }
     }
 

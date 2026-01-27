@@ -167,43 +167,46 @@ public func withRetry<T: Sendable, E: Error & Sendable>(
     operation: @Sendable () async throws(E) -> T
 ) async throws(RetryError<E>) -> T {
     var allErrors: [E] = []
+    var lastError: E?
 
     for attempt in 1...configuration.maxAttempts {
-        do {
-            try Task.checkCancellation()
-        } catch {
-            throw RetryError(attempts: attempt, lastError: allErrors.last!, allErrors: allErrors)
+        // Check cancellation - if cancelled before any attempt, propagate via the operation
+        if Task.isCancelled, let error = lastError {
+            throw RetryError(attempts: attempt - 1, lastError: error, allErrors: allErrors)
         }
 
         do {
             return try await operation()
-        } catch {
-            allErrors.append(error)
+        } catch let operationError {
+            allErrors.append(operationError)
+            lastError = operationError
 
             guard attempt < configuration.maxAttempts else {
                 throw RetryError(
                     attempts: attempt,
-                    lastError: error,
+                    lastError: operationError,
                     allErrors: allErrors
                 )
             }
 
-            guard predicate(error: error, attempt: attempt) else {
+            guard predicate(error: operationError, attempt: attempt) else {
                 throw RetryError(
                     attempts: attempt,
-                    lastError: error,
+                    lastError: operationError,
                     allErrors: allErrors
                 )
             }
 
             let delay = configuration.delay(forAttempt: attempt + 1)
-            await eventHandler.onRetry(attempt, error, delay)
+            await eventHandler.onRetry(attempt, operationError, delay)
 
             if delay > .zero {
                 do {
                     try await Task.sleep(for: delay)
                 } catch {
-                    throw RetryError(attempts: attempt, lastError: allErrors.last!, allErrors: allErrors)
+                    // Sleep was interrupted (likely cancellation)
+                    // Use the operation error, not the sleep interruption error
+                    throw RetryError(attempts: attempt, lastError: operationError, allErrors: allErrors)
                 }
             }
         }
@@ -285,7 +288,10 @@ public func withRetry<T: Sendable, E: Error & Sendable>(
             throw RateLimiterError.timeout
         }
 
-        let result = try await group.next()!
+        // One of the two tasks will always complete (operation or timeout)
+        guard let result = try await group.next() else {
+            throw RateLimiterError.timeout
+        }
         group.cancelAll()
         return result
     }
