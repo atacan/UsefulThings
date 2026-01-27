@@ -5,8 +5,12 @@ public func getEnvironmentVariable(_ name: String, from envFileUrl: URL) -> Stri
         return value
     }
 
-    let dotenvData = try! Data(contentsOf: envFileUrl)
-    let dotenvString = String(data: dotenvData, encoding: .utf8)!
+    guard let dotenvData = try? Data(contentsOf: envFileUrl) else {
+        return nil
+    }
+    guard let dotenvString = String(data: dotenvData, encoding: .utf8) else {
+        return nil
+    }
     let dotenvLines = dotenvString.split(separator: "\n")
     for line in dotenvLines {
         let parts = line.split(separator: "=")
