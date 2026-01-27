@@ -1,11 +1,3 @@
-//
-// https://github.com/atacan
-// 16.08.25
-	
-
-
-import Foundation
-
 // MARK: - Single-Single Wrapper (prefix and suffix are single elements)
 public struct AsyncSequenceWrapperSingleSingle<Base: AsyncSequence>: AsyncSequence {
     public typealias Element = Base.Element
