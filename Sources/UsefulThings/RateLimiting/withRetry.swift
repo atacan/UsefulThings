@@ -8,7 +8,7 @@ public struct RetryConfiguration: Sendable {
     public let maxDelay: Duration
     public let backoffMultiplier: Double
     public let jitterFactor: Double
-    
+
     public init(
         maxAttempts: Int = 3,
         initialDelay: Duration = .seconds(1),
@@ -19,16 +19,16 @@ public struct RetryConfiguration: Sendable {
         precondition(maxAttempts >= 1)
         precondition(backoffMultiplier >= 1.0)
         precondition(jitterFactor >= 0 && jitterFactor <= 1.0)
-        
+
         self.maxAttempts = maxAttempts
         self.initialDelay = initialDelay
         self.maxDelay = maxDelay
         self.backoffMultiplier = backoffMultiplier
         self.jitterFactor = jitterFactor
     }
-    
+
     public static let `default` = RetryConfiguration()
-    
+
     public static let aggressive = RetryConfiguration(
         maxAttempts: 5,
         initialDelay: .milliseconds(100),
@@ -36,7 +36,7 @@ public struct RetryConfiguration: Sendable {
         backoffMultiplier: 1.5,
         jitterFactor: 0.2
     )
-    
+
     public static let conservative = RetryConfiguration(
         maxAttempts: 3,
         initialDelay: .seconds(5),
@@ -44,132 +44,142 @@ public struct RetryConfiguration: Sendable {
         backoffMultiplier: 3.0,
         jitterFactor: 0.1
     )
-    
+
     public static let noRetry = RetryConfiguration(maxAttempts: 1)
-    
+
     public func delay(forAttempt attempt: Int) -> Duration {
         guard attempt > 1 else { return .zero }
-        
+
         let exponentialDelay = initialDelay.toSeconds * pow(backoffMultiplier, Double(attempt - 2))
         let clampedDelay = min(exponentialDelay, maxDelay.toSeconds)
-        
+
         let jitterRange = clampedDelay * jitterFactor
         let jitter = Double.random(in: -jitterRange...jitterRange)
         let finalDelay = max(0, clampedDelay + jitter)
-        
+
         return .seconds(finalDelay)
     }
 }
 
 // MARK: - Retry Predicate
 
-public struct RetryPredicate: Sendable {
-    private let shouldRetry: @Sendable (any Error, Int) -> Bool
-    
-    public init(_ predicate: @escaping @Sendable (any Error, Int) -> Bool) {
+public struct RetryPredicate<E: Error & Sendable>: Sendable {
+    private let shouldRetry: @Sendable (E, Int) -> Bool
+
+    public init(_ predicate: @escaping @Sendable (E, Int) -> Bool) {
         self.shouldRetry = predicate
     }
-    
-    public func callAsFunction(error: any Error, attempt: Int) -> Bool {
+
+    public func callAsFunction(error: E, attempt: Int) -> Bool {
         shouldRetry(error, attempt)
     }
-    
-    public static let always = RetryPredicate { _, _ in true }
-    public static let never = RetryPredicate { _, _ in false }
-    
+
+    public static var always: RetryPredicate<E> { RetryPredicate { _, _ in true } }
+    public static var never: RetryPredicate<E> { RetryPredicate { _, _ in false } }
+
     /// Only retry if the error is of a specific type
-    public static func on<E: Error>(_ errorType: E.Type) -> RetryPredicate {
-        RetryPredicate { error, _ in error is E }
+    public static func on<Specific: Error>(_ errorType: Specific.Type) -> RetryPredicate<E> {
+        RetryPredicate { error, _ in error is Specific }
     }
-    
-    /// Retry on specific error values (requires Equatable errors)
-    public static func onErrors<E: Error & Equatable & Sendable>(_ errors: E...) -> RetryPredicate {
-        let errorList = errors
-        return RetryPredicate { error, _ in
-            guard let typedError = error as? E else { return false }
-            return errorList.contains(typedError)
-        }
-    }
-    
+
     /// Don't retry on specific error type
-    public static func except<E: Error>(_ errorType: E.Type) -> RetryPredicate {
-        RetryPredicate { error, _ in !(error is E) }
+    public static func except<Specific: Error>(_ errorType: Specific.Type) -> RetryPredicate<E> {
+        RetryPredicate { error, _ in !(error is Specific) }
     }
-    
+
     /// Only retry up to N times for specific error type
-    public static func limited<E: Error>(_ errorType: E.Type, maxAttempts: Int) -> RetryPredicate {
+    public static func limited<Specific: Error>(_ errorType: Specific.Type, maxAttempts: Int) -> RetryPredicate<E> {
         RetryPredicate { error, attempt in
-            guard error is E else { return true }
+            guard error is Specific else { return true }
             return attempt < maxAttempts
         }
     }
-    
+
     /// Combine predicates with AND
-    public func and(_ other: RetryPredicate) -> RetryPredicate {
+    public func and(_ other: RetryPredicate<E>) -> RetryPredicate<E> {
         RetryPredicate { error, attempt in
             self(error: error, attempt: attempt) && other(error: error, attempt: attempt)
         }
     }
-    
+
     /// Combine predicates with OR
-    public func or(_ other: RetryPredicate) -> RetryPredicate {
+    public func or(_ other: RetryPredicate<E>) -> RetryPredicate<E> {
         RetryPredicate { error, attempt in
             self(error: error, attempt: attempt) || other(error: error, attempt: attempt)
         }
     }
-    
+
     /// Negate the predicate
-    public var negated: RetryPredicate {
+    public var negated: RetryPredicate<E> {
         RetryPredicate { error, attempt in
             !self(error: error, attempt: attempt)
         }
     }
 }
 
+extension RetryPredicate where E: Equatable {
+    /// Retry on specific error values (requires Equatable errors)
+    public static func onErrors(_ errors: E...) -> RetryPredicate<E> {
+        let errorList = errors
+        return RetryPredicate { error, _ in
+            errorList.contains(error)
+        }
+    }
+}
+
 // MARK: - Retry Event Handler
 
-public struct RetryEventHandler: Sendable {
-    public let onRetry: @Sendable (Int, any Error, Duration) async -> Void
-    
-    public init(onRetry: @escaping @Sendable (Int, any Error, Duration) async -> Void) {
+public struct RetryEventHandler<E: Error & Sendable>: Sendable {
+    public let onRetry: @Sendable (Int, E, Duration) async -> Void
+
+    public init(onRetry: @escaping @Sendable (Int, E, Duration) async -> Void) {
         self.onRetry = onRetry
     }
-    
-    public static let none = RetryEventHandler { _, _, _ in }
-    
+
+    public static var none: RetryEventHandler<E> { RetryEventHandler { _, _, _ in } }
+
     public static func log(
         using logger: @escaping @Sendable (String) -> Void = { print($0) }
-    ) -> RetryEventHandler {
+    ) -> RetryEventHandler<E> {
         RetryEventHandler { attempt, error, delay in
             logger("Retry attempt \(attempt) after error: \(error). Waiting \(delay)...")
         }
     }
 }
 
-// MARK: - withRetry Implementation
+public struct RetryError<E: Error & Sendable>: Error, Sendable {
+    public let attempts: Int
+    public let lastError: E
+    public let allErrors: [E]
 
-/// Executes an async operation with automatic retries
-public func withRetry<T: Sendable>(
+    public var description: String {
+        "Failed after \(attempts) attempts. Last error: \(lastError)"
+    }
+}
+
+// MARK: - withRetry Implementation (Typed Throws - No Rate Limiter)
+
+/// Executes an async operation with automatic retries using typed throws
+public func withRetry<T: Sendable, E: Error & Sendable>(
     configuration: RetryConfiguration = .default,
-    predicate: RetryPredicate = .always,
-    rateLimiter: (any RateLimiter)? = nil,
-    eventHandler: RetryEventHandler = .none,
-    operation: @Sendable () async throws -> T
-) async throws -> T {
-    var allErrors: [any Error] = []
-    
+    predicate: RetryPredicate<E> = .always,
+    eventHandler: RetryEventHandler<E> = .none,
+    operation: @Sendable () async throws(E) -> T
+) async throws(RetryError<E>) -> T {
+    var allErrors: [E] = []
+
     for attempt in 1...configuration.maxAttempts {
-        try Task.checkCancellation()
-        
-        if let limiter = rateLimiter {
-            try await limiter.acquire()
+        do {
+            try Task.checkCancellation()
+        } catch {
+            throw RetryError(attempts: attempt, lastError: allErrors.last!, allErrors: allErrors)
         }
-        
+
         do {
             return try await operation()
         } catch {
             allErrors.append(error)
-            
+
             guard attempt < configuration.maxAttempts else {
                 throw RetryError(
                     attempts: attempt,
@@ -177,29 +187,37 @@ public func withRetry<T: Sendable>(
                     allErrors: allErrors
                 )
             }
-            
+
             guard predicate(error: error, attempt: attempt) else {
-                throw error
+                throw RetryError(
+                    attempts: attempt,
+                    lastError: error,
+                    allErrors: allErrors
+                )
             }
-            
+
             let delay = configuration.delay(forAttempt: attempt + 1)
             await eventHandler.onRetry(attempt, error, delay)
-            
+
             if delay > .zero {
-                try await Task.sleep(for: delay)
+                do {
+                    try await Task.sleep(for: delay)
+                } catch {
+                    throw RetryError(attempts: attempt, lastError: allErrors.last!, allErrors: allErrors)
+                }
             }
         }
     }
-    
+
     fatalError("Unreachable")
 }
 
-/// Convenience overload with simpler parameters
-public func withRetry<T: Sendable>(
+/// Convenience overload with simpler parameters (typed throws)
+public func withRetry<T: Sendable, E: Error & Sendable>(
     maxAttempts: Int,
     delay: Duration = .seconds(1),
-    operation: @Sendable () async throws -> T
-) async throws -> T {
+    operation: @Sendable () async throws(E) -> T
+) async throws(RetryError<E>) -> T {
     try await withRetry(
         configuration: RetryConfiguration(
             maxAttempts: maxAttempts,
@@ -211,12 +229,47 @@ public func withRetry<T: Sendable>(
     )
 }
 
+// MARK: - withRetry with Rate Limiter (Generic, Untyped throws)
+
+/// Executes an async operation with automatic retries and rate limiting
+/// Note: Uses untyped throws due to Swift compiler limitations with typed throws + generics + async
+public func withRetry<T: Sendable, L: RateLimiter>(
+    configuration: RetryConfiguration = .default,
+    rateLimiter: L,
+    operation: @Sendable () async throws -> T
+) async throws -> T {
+    var allErrors: [Error] = []
+
+    for attempt in 1...configuration.maxAttempts {
+        try Task.checkCancellation()
+        try await rateLimiter.acquire()
+
+        do {
+            return try await operation()
+        } catch {
+            allErrors.append(error)
+
+            guard attempt < configuration.maxAttempts else {
+                throw error
+            }
+
+            let delay = configuration.delay(forAttempt: attempt + 1)
+
+            if delay > .zero {
+                try await Task.sleep(for: delay)
+            }
+        }
+    }
+
+    fatalError("Unreachable")
+}
+
 /// Retry with timeout for entire retry sequence
-public func withRetry<T: Sendable>(
+public func withRetry<T: Sendable, E: Error & Sendable>(
     configuration: RetryConfiguration = .default,
     timeout: Duration,
-    predicate: RetryPredicate = .always,
-    operation: @Sendable @escaping () async throws -> T
+    predicate: RetryPredicate<E> = .always,
+    operation: @Sendable @escaping () async throws(E) -> T
 ) async throws -> T {
     try await withThrowingTaskGroup(of: T.self) { group in
         group.addTask {
@@ -226,12 +279,12 @@ public func withRetry<T: Sendable>(
                 operation: operation
             )
         }
-        
+
         group.addTask {
             try await Task.sleep(for: timeout)
             throw RateLimiterError.timeout
         }
-        
+
         let result = try await group.next()!
         group.cancelAll()
         return result
@@ -244,25 +297,39 @@ public func withRetry<T: Sendable>(
 public func withAdaptiveRetry<T: Sendable>(
     configuration: RetryConfiguration = .default,
     rateLimiter: AdaptiveRateLimiter,
-    isRateLimitError: @escaping @Sendable (any Error) -> Bool,
+    isRateLimitError: @escaping @Sendable (Error) -> Bool,
     operation: @Sendable () async throws -> T
 ) async throws -> T {
-    try await withRetry(
-        configuration: configuration,
-        predicate: .always,
-        rateLimiter: rateLimiter
-    ) {
+    var allErrors: [Error] = []
+
+    for attempt in 1...configuration.maxAttempts {
+        try Task.checkCancellation()
+        try await rateLimiter.acquire()
+
         do {
             let result = try await operation()
             await rateLimiter.recordSuccess()
             return result
         } catch {
+            allErrors.append(error)
+
             if isRateLimitError(error) {
                 await rateLimiter.recordRateLimited()
             }
-            throw error
+
+            guard attempt < configuration.maxAttempts else {
+                throw error
+            }
+
+            let delay = configuration.delay(forAttempt: attempt + 1)
+
+            if delay > .zero {
+                try await Task.sleep(for: delay)
+            }
         }
     }
+
+    fatalError("Unreachable")
 }
 
 // MARK: - Circuit Breaker
@@ -271,23 +338,23 @@ public func withAdaptiveRetry<T: Sendable>(
 public actor CircuitBreaker {
     public enum State: Sendable {
         /// Normal operation
-        case closed      
+        case closed
         /// Failing, reject requests
-        case open        
+        case open
         /// Testing if service recovered
-        case halfOpen    
+        case halfOpen
     }
-    
+
     private var state: State = .closed
     private var failureCount: Int = 0
     private var successCount: Int = 0
     private var lastFailureTime: ContinuousClock.Instant?
-    
+
     private let failureThreshold: Int
     private let successThreshold: Int
     private let timeout: Duration
     private let clock = ContinuousClock()
-    
+
     public init(
         failureThreshold: Int = 5,
         successThreshold: Int = 2,
@@ -297,14 +364,34 @@ public actor CircuitBreaker {
         self.successThreshold = successThreshold
         self.timeout = timeout
     }
-    
+
     public var currentState: State { state }
-    
-    public func execute<T: Sendable>(
-        operation: @Sendable () async throws -> T
+
+    public func execute<T: Sendable, E: Error>(
+        operation: @Sendable () async throws(E) -> T
+    ) async throws(CircuitBreakerFailure<E>) -> T {
+        do {
+            try checkState()
+        } catch {
+            throw .circuitOpen(retryAfter: error.retryAfter)
+        }
+
+        do {
+            let result = try await operation()
+            recordSuccess()
+            return result
+        } catch {
+            recordFailure()
+            throw .operationFailed(error)
+        }
+    }
+
+    /// Untyped version for simpler usage
+    public func run<T: Sendable>(
+        _ operation: @Sendable () async throws -> T
     ) async throws -> T {
-        try checkState()
-        
+        try checkStateUntyped()
+
         do {
             let result = try await operation()
             recordSuccess()
@@ -314,18 +401,42 @@ public actor CircuitBreaker {
             throw error
         }
     }
-    
-    private func checkState() throws {
+
+    private func checkState() throws(CircuitBreakerOpenError) {
         switch state {
         case .closed:
             return
-            
+
         case .open:
             guard let lastFailure = lastFailureTime else {
                 state = .halfOpen
                 return
             }
-            
+
+            let elapsed = lastFailure.duration(to: clock.now)
+            if elapsed >= timeout {
+                state = .halfOpen
+                successCount = 0
+            } else {
+                throw CircuitBreakerOpenError(retryAfter: timeout - elapsed)
+            }
+
+        case .halfOpen:
+            return
+        }
+    }
+
+    private func checkStateUntyped() throws {
+        switch state {
+        case .closed:
+            return
+
+        case .open:
+            guard let lastFailure = lastFailureTime else {
+                state = .halfOpen
+                return
+            }
+
             let elapsed = lastFailure.duration(to: clock.now)
             if elapsed >= timeout {
                 state = .halfOpen
@@ -333,17 +444,17 @@ public actor CircuitBreaker {
             } else {
                 throw CircuitBreakerError.open(retryAfter: timeout - elapsed)
             }
-            
+
         case .halfOpen:
             return
         }
     }
-    
+
     private func recordSuccess() {
         switch state {
         case .closed:
             failureCount = 0
-            
+
         case .halfOpen:
             successCount += 1
             if successCount >= successThreshold {
@@ -351,37 +462,46 @@ public actor CircuitBreaker {
                 failureCount = 0
                 successCount = 0
             }
-            
+
         case .open:
             break
         }
     }
-    
+
     private func recordFailure() {
         lastFailureTime = clock.now
-        
+
         switch state {
         case .closed:
             failureCount += 1
             if failureCount >= failureThreshold {
                 state = .open
             }
-            
+
         case .halfOpen:
             state = .open
             successCount = 0
-            
+
         case .open:
             break
         }
     }
-    
+
     public func reset() {
         state = .closed
         failureCount = 0
         successCount = 0
         lastFailureTime = nil
     }
+}
+
+public struct CircuitBreakerOpenError: Error, Sendable {
+    public let retryAfter: Duration
+}
+
+public enum CircuitBreakerFailure<E: Error>: Error {
+    case circuitOpen(retryAfter: Duration)
+    case operationFailed(E)
 }
 
 public enum CircuitBreakerError: Error, Sendable {
@@ -391,22 +511,65 @@ public enum CircuitBreakerError: Error, Sendable {
 // MARK: - Combined Resilience Helper
 
 /// Combines rate limiting, retry, and circuit breaker
-public func withResilience<T: Sendable>(
-    rateLimiter: (any RateLimiter)? = nil,
+public func withResilience<T: Sendable, L: RateLimiter>(
+    rateLimiter: L,
     circuitBreaker: CircuitBreaker? = nil,
     retryConfiguration: RetryConfiguration = .default,
-    retryPredicate: RetryPredicate = .always,
     operation: @Sendable () async throws -> T
 ) async throws -> T {
-    try await withRetry(
-        configuration: retryConfiguration,
-        predicate: retryPredicate,
-        rateLimiter: rateLimiter
-    ) {
-        if let cb = circuitBreaker {
-            return try await cb.execute(operation: operation)
-        } else {
-            return try await operation()
+    for attempt in 1...retryConfiguration.maxAttempts {
+        try Task.checkCancellation()
+        try await rateLimiter.acquire()
+
+        do {
+            if let cb = circuitBreaker {
+                return try await cb.run(operation)
+            } else {
+                return try await operation()
+            }
+        } catch {
+            guard attempt < retryConfiguration.maxAttempts else {
+                throw error
+            }
+
+            let delay = retryConfiguration.delay(forAttempt: attempt + 1)
+
+            if delay > .zero {
+                try await Task.sleep(for: delay)
+            }
         }
     }
+
+    fatalError("Unreachable")
+}
+
+/// Combines retry and circuit breaker (no rate limiter)
+public func withResilience<T: Sendable>(
+    circuitBreaker: CircuitBreaker? = nil,
+    retryConfiguration: RetryConfiguration = .default,
+    operation: @Sendable () async throws -> T
+) async throws -> T {
+    for attempt in 1...retryConfiguration.maxAttempts {
+        try Task.checkCancellation()
+
+        do {
+            if let cb = circuitBreaker {
+                return try await cb.run(operation)
+            } else {
+                return try await operation()
+            }
+        } catch {
+            guard attempt < retryConfiguration.maxAttempts else {
+                throw error
+            }
+
+            let delay = retryConfiguration.delay(forAttempt: attempt + 1)
+
+            if delay > .zero {
+                try await Task.sleep(for: delay)
+            }
+        }
+    }
+
+    fatalError("Unreachable")
 }
