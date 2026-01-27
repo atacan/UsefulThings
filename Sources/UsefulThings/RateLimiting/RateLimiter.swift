@@ -15,16 +15,6 @@ public enum RateLimiterError: Error, Sendable {
     case timeout
 }
 
-public struct RetryError: Error, Sendable {
-    public let attempts: Int
-    public let lastError: any Error
-    public let allErrors: [any Error]
-    
-    public var description: String {
-        "Failed after \(attempts) attempts. Last error: \(lastError)"
-    }
-}
-
 // MARK: - Rate Limiter Protocol
 
 /// Protocol for all rate limiters
@@ -619,13 +609,13 @@ public actor CompositeRateLimiter<each L: RateLimiter>: RateLimiter {
 // MARK: - Keyed Rate Limiter
 
 /// Per-key rate limiting (e.g., per-user, per-IP)
-public actor KeyedRateLimiter<Key: Hashable & Sendable> {
-    public typealias LimiterFactory = @Sendable () -> any RateLimiter
-    
-    private var limiters: [Key: any RateLimiter] = [:]
+public actor KeyedRateLimiter<Key: Hashable & Sendable, L: RateLimiter> {
+    public typealias LimiterFactory = @Sendable () -> L
+
+    private var limiters: [Key: L] = [:]
     private let factory: LimiterFactory
     private let maxKeys: Int?
-    
+
     public init(
         maxKeys: Int? = nil,
         factory: @escaping LimiterFactory
@@ -633,47 +623,47 @@ public actor KeyedRateLimiter<Key: Hashable & Sendable> {
         self.maxKeys = maxKeys
         self.factory = factory
     }
-    
-    private func getLimiter(for key: Key) -> any RateLimiter {
+
+    private func getLimiter(for key: Key) -> L {
         if let existing = limiters[key] {
             return existing
         }
-        
+
         // Evict oldest if at capacity (simple FIFO - in production use LRU)
         if let maxKeys = maxKeys, limiters.count >= maxKeys {
             if let firstKey = limiters.keys.first {
                 limiters.removeValue(forKey: firstKey)
             }
         }
-        
+
         let limiter = factory()
         limiters[key] = limiter
         return limiter
     }
-    
+
     public func acquire(for key: Key) async throws {
         let limiter = getLimiter(for: key)
         try await limiter.acquire()
     }
-    
+
     public func tryAcquire(for key: Key) async -> Bool {
         let limiter = getLimiter(for: key)
         return await limiter.tryAcquire()
     }
-    
+
     public func reset(for key: Key) async {
         if let limiter = limiters[key] {
             await limiter.reset()
         }
     }
-    
+
     public func resetAll() async {
         for limiter in limiters.values {
             await limiter.reset()
         }
         limiters.removeAll()
     }
-    
+
     public var activeKeyCount: Int {
         limiters.count
     }
