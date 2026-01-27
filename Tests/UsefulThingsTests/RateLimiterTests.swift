@@ -1234,7 +1234,8 @@ struct ConcurrentAccessTests {
 
     @Test("TokenBucket handles concurrent access")
     func tokenBucketConcurrent() async throws {
-        let limiter = TokenBucketRateLimiter(capacity: 10, refillRate: 100.0)
+        // Use very low refill rate so no tokens refill during the test
+        let limiter = TokenBucketRateLimiter(capacity: 10, refillRate: 0.001)
         let successCounter = Counter()
 
         await withTaskGroup(of: Void.self) { group in
@@ -1281,7 +1282,8 @@ struct ConcurrentAccessTests {
         let keyedLimiter = KeyedRateLimiter<Int, TokenBucketRateLimiter>(
             maxKeys: 100
         ) {
-            TokenBucketRateLimiter(capacity: 5, refillRate: 100.0)
+            // Use very low refill rate so no tokens refill during the test
+            TokenBucketRateLimiter(capacity: 5, refillRate: 0.001)
         }
 
         let successCounter = Counter()
