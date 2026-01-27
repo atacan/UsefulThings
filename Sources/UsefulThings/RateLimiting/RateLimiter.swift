@@ -1,6 +1,7 @@
 // MARK: - Duration Extension
 
 extension Duration {
+    /// Converts Duration to seconds as Double
     var toSeconds: Double {
         let (seconds, attoseconds) = self.components
         return Double(seconds) + Double(attoseconds) * 1e-18
@@ -33,6 +34,7 @@ public protocol RateLimiter: Actor, Sendable {
     func acquire() async throws
     
     /// Attempts to acquire a permit immediately without waiting
+    /// Returns true if successful, false if rate limited
     func tryAcquire() async -> Bool
     
     /// Returns the estimated time until next permit is available
@@ -51,11 +53,13 @@ public protocol RateLimiter: Actor, Sendable {
 /// - Best for: APIs that allow occasional burst traffic
 public actor TokenBucketRateLimiter: RateLimiter {
     private let capacity: Double
-    private let refillRate: Double
+    /// tokens per second
+    private let refillRate: Double 
     private var tokens: Double
     private var lastRefillTime: ContinuousClock.Instant
     private let clock = ContinuousClock()
     
+    /// Initialize with explicit refill rate
     public init(capacity: Int, refillRate: Double) {
         precondition(capacity > 0 && refillRate > 0)
         self.capacity = Double(capacity)
@@ -64,6 +68,7 @@ public actor TokenBucketRateLimiter: RateLimiter {
         self.lastRefillTime = ContinuousClock().now
     }
     
+    /// Initialize with requests per time window
     public init(capacity: Int, per window: Duration) {
         precondition(capacity > 0 && window.toSeconds > 0)
         self.capacity = Double(capacity)
@@ -113,7 +118,10 @@ public actor TokenBucketRateLimiter: RateLimiter {
         lastRefillTime = clock.now
     }
     
-    public var availableTokens: Double { tokens }
+    /// Current available tokens (for monitoring)
+    public var availableTokens: Double {
+        tokens
+    }
 }
 
 // MARK: - Leaky Bucket Rate Limiter
@@ -121,9 +129,11 @@ public actor TokenBucketRateLimiter: RateLimiter {
 /// Leaky Bucket Algorithm (as a meter)
 /// - Water (requests) fills the bucket
 /// - Bucket leaks at a constant rate
+/// - Overflow means rate limit exceeded
 /// - Best for: Smoothing out traffic to a constant rate
 public actor LeakyBucketRateLimiter: RateLimiter {
     private let capacity: Double
+    /// units leaked per second
     private let leakRate: Double
     private var waterLevel: Double = 0
     private var lastLeakTime: ContinuousClock.Instant
@@ -190,7 +200,8 @@ public actor LeakyBucketRateLimiter: RateLimiter {
 /// Fixed Window Algorithm
 /// - Divides time into fixed windows
 /// - Counts requests in current window
-/// - Simple but has boundary burst issue
+/// - Resets count when window expires
+/// - Simple but has boundary burst issue (2x at window edges)
 /// - Best for: Simple rate limiting where edge cases are acceptable
 public actor FixedWindowRateLimiter: RateLimiter {
     private let limit: Int
@@ -257,8 +268,9 @@ public actor FixedWindowRateLimiter: RateLimiter {
 
 /// Sliding Window Log Algorithm
 /// - Stores timestamp of each request
+/// - Counts requests within sliding window
 /// - Most accurate but O(n) memory
-/// - Best for: When accuracy is critical
+/// - Best for: When accuracy is critical and request volume is manageable
 public actor SlidingWindowLogRateLimiter: RateLimiter {
     private let limit: Int
     private let windowDuration: Duration
@@ -318,8 +330,9 @@ public actor SlidingWindowLogRateLimiter: RateLimiter {
 // MARK: - Sliding Window Counter Rate Limiter
 
 /// Sliding Window Counter Algorithm
-/// - Hybrid with weighted previous window
-/// - O(1) memory with good accuracy
+/// - Hybrid of fixed window with weighted previous window
+/// - Approximates sliding window with O(1) memory
+/// - Good balance of accuracy and efficiency
 /// - Best for: Most production use cases
 public actor SlidingWindowCounterRateLimiter: RateLimiter {
     private let limit: Int
@@ -401,6 +414,7 @@ public actor SlidingWindowCounterRateLimiter: RateLimiter {
 // MARK: - Concurrency Limiter
 
 /// Limits concurrent operations (semaphore-style)
+/// - Controls number of simultaneous in-flight operations
 /// - Best for: Connection pools, parallel task limiting
 public actor ConcurrencyLimiter: RateLimiter {
     private let maxConcurrent: Int
@@ -454,6 +468,7 @@ public actor ConcurrencyLimiter: RateLimiter {
         }
     }
     
+    /// Execute operation with automatic acquire/release
     public func withPermit<T: Sendable>(
         operation: @Sendable () async throws -> T
     ) async throws -> T {
@@ -472,6 +487,7 @@ public actor ConcurrencyLimiter: RateLimiter {
 // MARK: - Adaptive Rate Limiter
 
 /// Adaptive Rate Limiter that adjusts based on success/failure
+/// - Reduces rate on failures, increases on successes
 /// - Best for: External APIs with unknown or varying limits
 public actor AdaptiveRateLimiter: RateLimiter {
     private var currentRate: Double
@@ -535,10 +551,12 @@ public actor AdaptiveRateLimiter: RateLimiter {
         return .seconds((1.0 - tokens) / currentRate)
     }
     
+    /// Call on successful request to potentially increase rate
     public func recordSuccess() {
         currentRate = min(maxRate, currentRate * increaseRatio)
     }
     
+    /// Call on rate-limited response to decrease rate
     public func recordRateLimited() {
         currentRate = max(minRate, currentRate * decreaseRatio)
         tokens = min(tokens, currentRate / 2)
@@ -552,11 +570,11 @@ public actor AdaptiveRateLimiter: RateLimiter {
     public var currentRatePerSecond: Double { currentRate }
 }
 
-// MARK: - Composite Rate Limiter (Parameter Pack Version!)
+// MARK: - Composite Rate Limiter
 
 /// Combines multiple rate limiters using parameter packs
 /// All limiters must allow the request for it to proceed
-/// Uses Swift 6.0 pack iteration with `for-in repeat`
+/// Uses pack iteration with `for-in repeat`
 public actor CompositeRateLimiter<each L: RateLimiter>: RateLimiter {
     private let limiters: (repeat each L)
     
@@ -621,6 +639,7 @@ public actor KeyedRateLimiter<Key: Hashable & Sendable> {
             return existing
         }
         
+        // Evict oldest if at capacity (simple FIFO - in production use LRU)
         if let maxKeys = maxKeys, limiters.count >= maxKeys {
             if let firstKey = limiters.keys.first {
                 limiters.removeValue(forKey: firstKey)
@@ -655,5 +674,7 @@ public actor KeyedRateLimiter<Key: Hashable & Sendable> {
         limiters.removeAll()
     }
     
-    public var activeKeyCount: Int { limiters.count }
+    public var activeKeyCount: Int {
+        limiters.count
+    }
 }

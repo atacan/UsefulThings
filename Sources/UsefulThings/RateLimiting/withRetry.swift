@@ -77,10 +77,12 @@ public struct RetryPredicate: Sendable {
     public static let always = RetryPredicate { _, _ in true }
     public static let never = RetryPredicate { _, _ in false }
     
+    /// Only retry if the error is of a specific type
     public static func on<E: Error>(_ errorType: E.Type) -> RetryPredicate {
         RetryPredicate { error, _ in error is E }
     }
     
+    /// Retry on specific error values (requires Equatable errors)
     public static func onErrors<E: Error & Equatable & Sendable>(_ errors: E...) -> RetryPredicate {
         let errorList = errors
         return RetryPredicate { error, _ in
@@ -89,24 +91,38 @@ public struct RetryPredicate: Sendable {
         }
     }
     
+    /// Don't retry on specific error type
     public static func except<E: Error>(_ errorType: E.Type) -> RetryPredicate {
         RetryPredicate { error, _ in !(error is E) }
     }
     
+    /// Only retry up to N times for specific error type
+    public static func limited<E: Error>(_ errorType: E.Type, maxAttempts: Int) -> RetryPredicate {
+        RetryPredicate { error, attempt in
+            guard error is E else { return true }
+            return attempt < maxAttempts
+        }
+    }
+    
+    /// Combine predicates with AND
     public func and(_ other: RetryPredicate) -> RetryPredicate {
         RetryPredicate { error, attempt in
             self(error: error, attempt: attempt) && other(error: error, attempt: attempt)
         }
     }
     
+    /// Combine predicates with OR
     public func or(_ other: RetryPredicate) -> RetryPredicate {
         RetryPredicate { error, attempt in
             self(error: error, attempt: attempt) || other(error: error, attempt: attempt)
         }
     }
     
+    /// Negate the predicate
     public var negated: RetryPredicate {
-        RetryPredicate { error, attempt in !self(error: error, attempt: attempt) }
+        RetryPredicate { error, attempt in
+            !self(error: error, attempt: attempt)
+        }
     }
 }
 
@@ -132,6 +148,7 @@ public struct RetryEventHandler: Sendable {
 
 // MARK: - withRetry Implementation
 
+/// Executes an async operation with automatic retries
 public func withRetry<T: Sendable>(
     configuration: RetryConfiguration = .default,
     predicate: RetryPredicate = .always,
@@ -177,6 +194,7 @@ public func withRetry<T: Sendable>(
     fatalError("Unreachable")
 }
 
+/// Convenience overload with simpler parameters
 public func withRetry<T: Sendable>(
     maxAttempts: Int,
     delay: Duration = .seconds(1),
@@ -193,6 +211,7 @@ public func withRetry<T: Sendable>(
     )
 }
 
+/// Retry with timeout for entire retry sequence
 public func withRetry<T: Sendable>(
     configuration: RetryConfiguration = .default,
     timeout: Duration,
@@ -219,6 +238,9 @@ public func withRetry<T: Sendable>(
     }
 }
 
+// MARK: - withRetry with Adaptive Rate Limiter
+
+/// Specialized retry for APIs with rate limiting that provides feedback
 public func withAdaptiveRetry<T: Sendable>(
     configuration: RetryConfiguration = .default,
     rateLimiter: AdaptiveRateLimiter,
@@ -245,11 +267,15 @@ public func withAdaptiveRetry<T: Sendable>(
 
 // MARK: - Circuit Breaker
 
+/// Circuit Breaker pattern to prevent cascading failures
 public actor CircuitBreaker {
     public enum State: Sendable {
-        case closed
-        case open
-        case halfOpen
+        /// Normal operation
+        case closed      
+        /// Failing, reject requests
+        case open        
+        /// Testing if service recovered
+        case halfOpen    
     }
     
     private var state: State = .closed
@@ -364,6 +390,7 @@ public enum CircuitBreakerError: Error, Sendable {
 
 // MARK: - Combined Resilience Helper
 
+/// Combines rate limiting, retry, and circuit breaker
 public func withResilience<T: Sendable>(
     rateLimiter: (any RateLimiter)? = nil,
     circuitBreaker: CircuitBreaker? = nil,
