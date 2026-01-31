@@ -2,10 +2,6 @@
 
 A zero-dependency Swift utility library for async/await concurrency, rate limiting, retry logic, circuit breakers, and more. Built with Swift 6.1 and structured concurrency.
 
-```swift
-.package(url: "https://github.com/atacan/UsefulThings.git", from: "1.0.0")
-```
-
 ## Rate Limiting
 
 Eight actor-based, thread-safe rate limiter implementations behind a shared `RateLimiter` protocol. All are `Sendable` and safe for concurrent use.
