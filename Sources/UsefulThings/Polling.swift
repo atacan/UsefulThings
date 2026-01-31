@@ -17,10 +17,10 @@ public enum PollingError: Error {
     case conditionFailed(Error)
 }
 
-public func pollUntil<T>(
+public func withPolling<T>(
     configuration: PollingConfiguration = .default,
-    operation: @escaping () async throws -> T,
-    until condition: @escaping (T) throws -> Bool
+    until condition: @escaping (T) throws -> Bool,
+    operation: @escaping () async throws -> T
 ) async throws -> T {
     var currentRetry = 0
     var currentDelay = configuration.baseDelay
@@ -44,4 +44,13 @@ public func pollUntil<T>(
         currentRetry += 1
         currentDelay = min(currentDelay * 2, configuration.maxDelay)
     }
+}
+
+@available(*, deprecated, renamed: "withPolling(configuration:until:operation:)")
+public func pollUntil<T>(
+    configuration: PollingConfiguration = .default,
+    operation: @escaping () async throws -> T,
+    until condition: @escaping (T) throws -> Bool
+) async throws -> T {
+    try await withPolling(configuration: configuration, until: condition, operation: operation)
 }
