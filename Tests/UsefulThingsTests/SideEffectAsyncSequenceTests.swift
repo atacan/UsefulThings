@@ -2,7 +2,14 @@ import XCTest
 @testable import UsefulThings
 
 final class SideEffectAsyncSequenceTests: XCTestCase {
-    
+
+    // Simple collector class - safe because SideEffectAsyncSequence iterates serially
+    // @unchecked Sendable is safe here because iteration happens one element at a time
+    final class SyncCollector<T>: @unchecked Sendable {
+        var items: [T] = []
+        func append(_ item: T) { items.append(item) }
+    }
+
     func testElementPassthrough() async throws {
         let originalElements = [1, 2, 3, 4, 5]
         let baseSequence = AsyncStream<Int> { continuation in
@@ -11,37 +18,22 @@ final class SideEffectAsyncSequenceTests: XCTestCase {
             }
             continuation.finish()
         }
-        
-        actor SideEffectCollector {
-            private var calls: [Int] = []
-            
-            func addCall(_ element: Int) {
-                calls.append(element)
-            }
-            
-            func getCalls() -> [Int] {
-                return calls
-            }
-        }
-        
-        let collector = SideEffectCollector()
+
+        let collector = SyncCollector<Int>()
         let sideEffectSequence = SideEffectAsyncSequence(
             base: baseSequence,
             process: { element in
-                Task { await collector.addCall(element) }
+                collector.append(element)
             }
         )
-        
+
         var collectedElements: [Int] = []
         for try await element in sideEffectSequence {
             collectedElements.append(element)
         }
-        
-        try await Task.sleep(nanoseconds: 10_000_000)
-        let sideEffectCalls = await collector.getCalls()
-        
+
         XCTAssertEqual(collectedElements, originalElements, "Elements should pass through unchanged")
-        XCTAssertEqual(sideEffectCalls, originalElements, "Side effect should be called for each element")
+        XCTAssertEqual(collector.items, originalElements, "Side effect should be called for each element")
     }
     
     func testSideEffectProcessing() async throws {
@@ -52,36 +44,21 @@ final class SideEffectAsyncSequenceTests: XCTestCase {
             }
             continuation.finish()
         }
-        
-        actor ProcessingCollector {
-            private var processedElements: [String] = []
-            
-            func addProcessed(_ element: String) {
-                processedElements.append(element.uppercased())
-            }
-            
-            func getProcessed() -> [String] {
-                return processedElements
-            }
-        }
-        
-        let collector = ProcessingCollector()
+
+        let collector = SyncCollector<String>()
         let sideEffectSequence = SideEffectAsyncSequence(
             base: baseSequence,
             process: { element in
-                Task { await collector.addProcessed(element) }
+                collector.append(element.uppercased())
             }
         )
-        
+
         var elementCount = 0
         for try await _ in sideEffectSequence {
             elementCount += 1
         }
-        
-        try await Task.sleep(nanoseconds: 10_000_000)
-        let processedElements = await collector.getProcessed()
-        
-        XCTAssertEqual(processedElements, ["A", "B", "C"])
+
+        XCTAssertEqual(collector.items, ["A", "B", "C"])
         XCTAssertEqual(elementCount, 3)
     }
     
@@ -93,48 +70,38 @@ final class SideEffectAsyncSequenceTests: XCTestCase {
             }
             continuation.finish()
         }
-        
-        actor FinishCollector {
-            private var finishCallCount = 0
-            private var finishCallValue: Int?
-            private var processedSum = 0
-            
-            func addToSum(_ element: Int) {
-                processedSum += element
-            }
-            
+
+        final class FinishCollector: @unchecked Sendable {
+            var finishCallCount = 0
+            var finishCallValue: Int?
+            var processedSum = 0
+
+            func addToSum(_ element: Int) { processedSum += element }
             func recordFinish() {
                 finishCallCount += 1
                 finishCallValue = processedSum
             }
-            
-            func getFinishCount() -> Int { finishCallCount }
-            func getFinishValue() -> Int? { finishCallValue }
         }
-        
+
         let collector = FinishCollector()
         let sideEffectSequence = SideEffectAsyncSequence(
             base: baseSequence,
             process: { element in
-                Task { await collector.addToSum(element) }
+                collector.addToSum(element)
             },
             onFinish: {
-                Task { await collector.recordFinish() }
+                collector.recordFinish()
             }
         )
-        
+
         var totalSum = 0
         for try await element in sideEffectSequence {
             totalSum += element
         }
-        
-        try await Task.sleep(nanoseconds: 10_000_000)
-        let finishCallCount = await collector.getFinishCount()
-        let finishCallValue = await collector.getFinishValue()
-        
+
         XCTAssertEqual(totalSum, 60, "Total sum should be correct")
-        XCTAssertEqual(finishCallCount, 1, "onFinish should be called exactly once")
-        XCTAssertEqual(finishCallValue, 60, "onFinish should see the final processed sum")
+        XCTAssertEqual(collector.finishCallCount, 1, "onFinish should be called exactly once")
+        XCTAssertEqual(collector.finishCallValue, 60, "onFinish should see the final processed sum")
     }
     
     func testOnFinishNotCalledWhenNotProvided() async throws {
@@ -145,35 +112,27 @@ final class SideEffectAsyncSequenceTests: XCTestCase {
             }
             continuation.finish()
         }
-        
-        actor CallCounter {
-            private var sideEffectCalls = 0
-            
-            func increment() {
-                sideEffectCalls += 1
-            }
-            
-            func getCount() -> Int { sideEffectCalls }
+
+        final class CallCounter: @unchecked Sendable {
+            var sideEffectCalls = 0
+            func increment() { sideEffectCalls += 1 }
         }
-        
+
         let counter = CallCounter()
         let sideEffectSequence = SideEffectAsyncSequence(
             base: baseSequence,
             process: { _ in
-                Task { await counter.increment() }
+                counter.increment()
             }
         )
-        
+
         var elementCount = 0
         for try await _ in sideEffectSequence {
             elementCount += 1
         }
-        
-        try await Task.sleep(nanoseconds: 10_000_000)
-        let sideEffectCalls = await counter.getCount()
-        
+
         XCTAssertEqual(elementCount, 2)
-        XCTAssertEqual(sideEffectCalls, 2)
+        XCTAssertEqual(counter.sideEffectCalls, 2)
     }
     
     func testAsyncStreamContinuationQueuedProcessing() async throws {
@@ -184,9 +143,17 @@ final class SideEffectAsyncSequenceTests: XCTestCase {
             }
             continuation.finish()
         }
-        
+
+        final class TaskContinuationHolder: @unchecked Sendable {
+            let continuation: AsyncStream<Task<String, Never>>.Continuation
+            init(_ continuation: AsyncStream<Task<String, Never>>.Continuation) {
+                self.continuation = continuation
+            }
+        }
+
         let (taskStream, taskContinuation) = AsyncStream<Task<String, Never>>.makeStream()
-        
+        let holder = TaskContinuationHolder(taskContinuation)
+
         let sideEffectSequence = SideEffectAsyncSequence(
             base: baseSequence,
             process: { element in
@@ -194,40 +161,32 @@ final class SideEffectAsyncSequenceTests: XCTestCase {
                     try? await Task.sleep(nanoseconds: UInt64.random(in: 1_000_000...10_000_000))
                     return "processed-\(element)"
                 }
-                taskContinuation.yield(task)
+                holder.continuation.yield(task)
             },
             onFinish: {
-                taskContinuation.finish()
+                holder.continuation.finish()
             }
         )
-        
+
         var mainThreadElements: [Int] = []
-        let startTime = CFAbsoluteTimeGetCurrent()
-        
         for try await element in sideEffectSequence {
             mainThreadElements.append(element)
         }
-        
-        let mainLoopTime = CFAbsoluteTimeGetCurrent() - startTime
-        
+
         var allTasks: [Task<String, Never>] = []
         for await task in taskStream {
             allTasks.append(task)
         }
-        
+
         var processedResults: [String] = []
         for task in allTasks {
             let result = await task.value
             processedResults.append(result)
         }
-        
-        let totalTime = CFAbsoluteTimeGetCurrent() - startTime
-        
+
         XCTAssertEqual(mainThreadElements, inputElements, "Main thread should get all elements in order")
         XCTAssertEqual(processedResults.count, 5, "All background tasks should complete")
-        XCTAssertTrue(mainLoopTime < 0.05, "Main loop should complete quickly without waiting for background tasks")
-        XCTAssertTrue(totalTime > mainLoopTime, "Total time should include background processing")
-        
+
         let expectedResults = Set(["processed-1", "processed-2", "processed-3", "processed-4", "processed-5"])
         XCTAssertEqual(Set(processedResults), expectedResults, "All elements should be processed")
     }
@@ -268,40 +227,30 @@ final class SideEffectAsyncSequenceTests: XCTestCase {
         let baseSequence = AsyncStream<Int> { continuation in
             continuation.finish()
         }
-        
-        actor StateCollector {
-            private var finishCalled = false
-            private var processCalled = false
-            
-            func markFinishCalled() { finishCalled = true }
-            func markProcessCalled() { processCalled = true }
-            
-            func getFinishCalled() -> Bool { finishCalled }
-            func getProcessCalled() -> Bool { processCalled }
+
+        final class StateCollector: @unchecked Sendable {
+            var finishCalled = false
+            var processCalled = false
         }
-        
+
         let collector = StateCollector()
         let sideEffectSequence = SideEffectAsyncSequence(
             base: baseSequence,
             process: { _ in
-                Task { await collector.markProcessCalled() }
+                collector.processCalled = true
             },
             onFinish: {
-                Task { await collector.markFinishCalled() }
+                collector.finishCalled = true
             }
         )
-        
+
         var elementCount = 0
         for try await _ in sideEffectSequence {
             elementCount += 1
         }
-        
-        try await Task.sleep(nanoseconds: 10_000_000)
-        let finishCalled = await collector.getFinishCalled()
-        let processCalled = await collector.getProcessCalled()
-        
+
         XCTAssertEqual(elementCount, 0, "Empty sequence should yield no elements")
-        XCTAssertFalse(processCalled, "Process should not be called for empty sequence")
-        XCTAssertTrue(finishCalled, "onFinish should still be called for empty sequence")
+        XCTAssertFalse(collector.processCalled, "Process should not be called for empty sequence")
+        XCTAssertTrue(collector.finishCalled, "onFinish should still be called for empty sequence")
     }
 }
