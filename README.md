@@ -164,17 +164,47 @@ try await withResilience(
 
 ## Polling
 
-Poll an operation until a condition is met, with exponential backoff and jitter.
+Poll an operation until a condition is met, with exponential backoff, jitter, timeout, and cancellation support.
 
 ```swift
-let result = try await pollUntil(
-    configuration: PollingConfiguration(maxRetries: 10, baseDelay: .seconds(1), maxDelay: .seconds(32))
-) {
-    try await checkJobStatus()
-} until: { status in
-    status == .completed
-}
+let result = try await withPolling(
+    until: { $0.status == .completed },
+    operation: { try await checkJobStatus() }
+)
 ```
+
+### Polling Configuration
+
+Configure attempts, delays, backoff, jitter, and an optional total timeout.
+
+```swift
+let config = PollingConfiguration(
+    maxAttempts: 20,
+    baseDelay: .milliseconds(500),
+    maxDelay: .seconds(10),
+    backoffMultiplier: 2.0,
+    jitterFactor: 0.5,
+    timeout: .seconds(60)
+)
+
+let result = try await withPolling(
+    configuration: config,
+    until: { $0.isReady },
+    operation: { try await pollServer() }
+)
+```
+
+### Testable Polling with Clock Injection
+
+Pass any `Clock` to control time in tests without real delays.
+
+```swift
+let result = try await withPolling(
+    configuration: .default,
+    clock: testClock,
+    until: { $0 == .done },
+    operation: { try await fetchStatus() }
+)
 
 ## AsyncSequence Utilities
 
