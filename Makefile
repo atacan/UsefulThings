@@ -1,5 +1,7 @@
 .PHONY: all build build-macos build-ios clean test help
 
+DOCKER_IMAGE := swift:latest
+
 # Default target - build for both platforms
 all: build
 
@@ -21,6 +23,20 @@ build-ios:
 test:
 	@echo "Running tests..."
 	@swift test
+
+build-linux: ## Run swift tests inside a Docker container
+	docker run --rm \
+		-v "$(CURDIR):/code" \
+		-w /code \
+		$(DOCKER_IMAGE) \
+		swift build
+
+test-on-linux: ## Run swift tests inside a Docker container
+	docker run --rm \
+		-v "$(CURDIR):/code" \
+		-w /code \
+		$(DOCKER_IMAGE) \
+		swift test
 
 # Clean build artifacts
 clean:

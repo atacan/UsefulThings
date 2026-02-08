@@ -1,4 +1,4 @@
-#if os(macOS)
+#if os(macOS) || os(Linux)
 import Foundation
 
 public func runCommand(_ command: String, workingDirectory: String? = nil) throws -> String {

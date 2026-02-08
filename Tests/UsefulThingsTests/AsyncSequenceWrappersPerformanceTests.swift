@@ -1,3 +1,4 @@
+#if os(macOS)
 import Testing
 @testable import UsefulThings
 import Foundation
@@ -400,3 +401,4 @@ struct AsyncSequenceWrappersPerformanceTests {
         case testFailure
     }
 }
+#endif
