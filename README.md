@@ -205,6 +205,7 @@ let result = try await withPolling(
     until: { $0 == .done },
     operation: { try await fetchStatus() }
 )
+```
 
 ## AsyncSequence Utilities
 
