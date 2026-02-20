@@ -1,8 +1,8 @@
 import Foundation
 
 public struct EquatableError: Error, Equatable, CustomStringConvertible, LocalizedError {
-    let base: Error
-    private let equals: (Error) -> Bool
+    let base: any Error
+    private let equals: @Sendable (any Error) -> Bool
 
     init(_ base: some Error) {
         self.base = base
