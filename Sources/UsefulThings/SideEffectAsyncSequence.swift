@@ -2,23 +2,30 @@ import Foundation
 
 /// A wrapper around an AsyncSequence that performs a side effect on each element
 /// while passing the original sequence through unchanged.
-/// The side effect can be performed concurrently by adding the effects to a queue. Otherwise, it is synchronous and will block the sequence consumption.
+/// The side effect can be performed concurrently by yielding elements into an `AsyncStream`.
+/// Otherwise, it is synchronous and will block sequence consumption.
 /// ```swift
-/// let queue = AsyncQueue(attributes: []) // not concurrent
-/// let tasks = LockIsolated([Task<Void, Error>]())
-/// let teedIncomingBody = SideEffectAsyncSequence(base: request.body) { element in
-///     let task = queue.addOperation {
+/// let (stream, continuation) = AsyncStream.makeStream(of: ByteBuffer.self)
+/// let sideEffectTask = Task {
+///     for await element in stream {
 ///         try await writer.write(Data(buffer: element))
 ///     }
-///     tasks.withValue({$0.append(task)})
 /// }
+///
+/// let teedIncomingBody = SideEffectAsyncSequence(
+///     base: request.body,
+///     process: { element in
+///         continuation.yield(element)
+///     },
+///     onFinish: {
+///         continuation.finish()
+///     }
+/// )
 ///
 /// /* USE THE SEQUENCE */
 /// 
-/// // Then when the consumption is done, wait for all the tasks to complete to ensure all the elements have been side-effected
-/// for task in tasks.value {
-///     try await task.value
-/// }
+/// // Wait for side effects after sequence consumption completes.
+/// try await sideEffectTask.value
 /// ```
 public struct SideEffectAsyncSequence<Base: AsyncSequence & Sendable>: AsyncSequence, Sendable {
     public typealias Element = Base.Element
