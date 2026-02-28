@@ -4,7 +4,8 @@
 [![](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Fatacan%2FUsefulThings%2Fbadge%3Ftype%3Dplatforms)](https://swiftpackageindex.com/atacan/UsefulThings)
 
 ![tokens](.github/badges/tokens.svg) <!-- token-count --><!-- /token-count -->
-![code line count](https://img.shields.io/github/directory-file-count/:user/:repo/:path)
+![code line count](https://img.shields.io/endpoint?url=https%3A%2F%2Fghloc.vercel.app%2Fapi%2Fatacan%2FUsefulThings%2Fbadge%3Fformat%3Dhuman%26filter%3D.swift%24)
+
 
 A zero-dependency Swift utility library for async/await concurrency, rate limiting, retry logic, circuit breakers, and more. Built with Swift 6.1 and structured concurrency.
 
