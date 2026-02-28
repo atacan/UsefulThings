@@ -21,7 +21,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - uses: qwibitai/nanoclaw/repo-tokens@v1
+      - uses: ./repo-tokens
         id: tokens
         with:
           include: 'Sources/**/*.swift Package.swift'
