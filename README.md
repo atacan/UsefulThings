@@ -3,7 +3,7 @@
 [![](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Fatacan%2FUsefulThings%2Fbadge%3Ftype%3Dswift-versions)](https://swiftpackageindex.com/atacan/UsefulThings)
 [![](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Fatacan%2FUsefulThings%2Fbadge%3Ftype%3Dplatforms)](https://swiftpackageindex.com/atacan/UsefulThings)
 
-![tokens](.github/badges/tokens.svg) <!-- token-count --><!-- /token-count -->
+![tokens](.github/badges/tokens.svg) <!-- token-count --><a href="https://github.com/qwibitai/nanoclaw/tree/main/repo-tokens">15.7k tokens · 8% of context window</a><!-- /token-count -->
 ![code line count](https://img.shields.io/endpoint?url=https%3A%2F%2Fghloc.vercel.app%2Fapi%2Fatacan%2FUsefulThings%2Fbadge%3Fformat%3Dhuman%26filter%3D.swift%24)
 
 
