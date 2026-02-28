@@ -565,6 +565,7 @@ public actor AdaptiveRateLimiter: RateLimiter {
 /// Combines multiple rate limiters using parameter packs
 /// All limiters must allow the request for it to proceed
 /// Uses pack iteration with `for-in repeat`
+@available(iOS 17.0, *)
 public actor CompositeRateLimiter<each L: RateLimiter>: RateLimiter {
     private let limiters: (repeat each L)
     
