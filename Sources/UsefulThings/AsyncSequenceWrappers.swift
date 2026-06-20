@@ -67,7 +67,7 @@ where Base.Element == Prefix.Element, Base.Element == Suffix.Element {
     @usableFromInline let suffix: Suffix
     
     @inlinable
-    init(_ base: Base, prefix: Prefix, suffix: Suffix) {
+    public init(_ base: Base, prefix: Prefix, suffix: Suffix) {
         self.base = base
         self.prefix = prefix
         self.suffix = suffix
@@ -127,7 +127,7 @@ where Base.Element == Suffix.Element {
     @usableFromInline let suffix: Suffix
     
     @inlinable
-    init(_ base: Base, prefix: Element, suffix: Suffix) {
+    public init(_ base: Base, prefix: Element, suffix: Suffix) {
         self.base = base
         self.prefix = prefix
         self.suffix = suffix
@@ -185,7 +185,7 @@ where Base.Element == Prefix.Element {
     @usableFromInline let suffix: Element
     
     @inlinable
-    init(_ base: Base, prefix: Prefix, suffix: Element) {
+    public init(_ base: Base, prefix: Prefix, suffix: Element) {
         self.base = base
         self.prefix = prefix
         self.suffix = suffix
@@ -249,7 +249,7 @@ public struct AsyncSequenceWrapperSinglePrefix<Base: AsyncSequence>: AsyncSequen
     @usableFromInline let prefix: Element
     
     @inlinable
-    init(_ base: Base, prefix: Element) {
+    public init(_ base: Base, prefix: Element) {
         self.base = base
         self.prefix = prefix
     }
@@ -289,7 +289,7 @@ public struct AsyncSequenceWrapperSingleSuffix<Base: AsyncSequence>: AsyncSequen
     @usableFromInline let suffix: Element
     
     @inlinable
-    init(_ base: Base, suffix: Element) {
+    public init(_ base: Base, suffix: Element) {
         self.base = base
         self.suffix = suffix
     }
@@ -339,7 +339,7 @@ where Base.Element == Prefix.Element {
     @usableFromInline let prefix: Prefix
     
     @inlinable
-    init(_ base: Base, prefix: Prefix) {
+    public init(_ base: Base, prefix: Prefix) {
         self.base = base
         self.prefix = prefix
     }
@@ -386,7 +386,7 @@ where Base.Element == Suffix.Element {
     @usableFromInline let suffix: Suffix
     
     @inlinable
-    init(_ base: Base, suffix: Suffix) {
+    public init(_ base: Base, suffix: Suffix) {
         self.base = base
         self.suffix = suffix
     }
@@ -425,7 +425,7 @@ where Base.Element == Suffix.Element {
 }
 
 // MARK: - Convenience Extensions
-extension AsyncSequence {
+public extension AsyncSequence {
     // Single element prefix and suffix
     @inlinable
     func wrapped(prefix: Element, suffix: Element) -> AsyncSequenceWrapperSingleSingle<Self> {
