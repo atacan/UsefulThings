@@ -57,6 +57,8 @@ public struct AsyncSequenceWrapperSingleSingle<Base: AsyncSequence>: AsyncSequen
     }
 }
 
+extension AsyncSequenceWrapperSingleSingle: Sendable where Base: Sendable, Element: Sendable {}
+
 // MARK: - Sequence-Sequence Wrapper (both prefix and suffix are sequences)
 public struct AsyncSequenceWrapperSeqSeq<Base: AsyncSequence, Prefix: AsyncSequence, Suffix: AsyncSequence>: AsyncSequence
 where Base.Element == Prefix.Element, Base.Element == Suffix.Element {
@@ -117,6 +119,8 @@ where Base.Element == Prefix.Element, Base.Element == Suffix.Element {
     }
 }
 
+extension AsyncSequenceWrapperSeqSeq: Sendable where Base: Sendable, Prefix: Sendable, Suffix: Sendable {}
+
 // MARK: - Single-Sequence Wrapper (prefix is single, suffix is sequence)
 public struct AsyncSequenceWrapperSingleSeq<Base: AsyncSequence, Suffix: AsyncSequence>: AsyncSequence
 where Base.Element == Suffix.Element {
@@ -174,6 +178,8 @@ where Base.Element == Suffix.Element {
         }
     }
 }
+
+extension AsyncSequenceWrapperSingleSeq: Sendable where Base: Sendable, Suffix: Sendable, Element: Sendable {}
 
 // MARK: - Sequence-Single Wrapper (prefix is sequence, suffix is single)
 public struct AsyncSequenceWrapperSeqSingle<Base: AsyncSequence, Prefix: AsyncSequence>: AsyncSequence
@@ -241,6 +247,8 @@ where Base.Element == Prefix.Element {
     }
 }
 
+extension AsyncSequenceWrapperSeqSingle: Sendable where Base: Sendable, Prefix: Sendable, Element: Sendable {}
+
 // MARK: - Single Prefix Only Wrapper
 public struct AsyncSequenceWrapperSinglePrefix<Base: AsyncSequence>: AsyncSequence {
     public typealias Element = Base.Element
@@ -280,6 +288,8 @@ public struct AsyncSequenceWrapperSinglePrefix<Base: AsyncSequence>: AsyncSequen
         }
     }
 }
+
+extension AsyncSequenceWrapperSinglePrefix: Sendable where Base: Sendable, Element: Sendable {}
 
 // MARK: - Single Suffix Only Wrapper
 public struct AsyncSequenceWrapperSingleSuffix<Base: AsyncSequence>: AsyncSequence {
@@ -330,6 +340,8 @@ public struct AsyncSequenceWrapperSingleSuffix<Base: AsyncSequence>: AsyncSequen
     }
 }
 
+extension AsyncSequenceWrapperSingleSuffix: Sendable where Base: Sendable, Element: Sendable {}
+
 // MARK: - Sequence Prefix Only Wrapper
 public struct AsyncSequenceWrapperSeqPrefix<Base: AsyncSequence, Prefix: AsyncSequence>: AsyncSequence
 where Base.Element == Prefix.Element {
@@ -377,6 +389,8 @@ where Base.Element == Prefix.Element {
     }
 }
 
+extension AsyncSequenceWrapperSeqPrefix: Sendable where Base: Sendable, Prefix: Sendable {}
+
 // MARK: - Sequence Suffix Only Wrapper
 public struct AsyncSequenceWrapperSeqSuffix<Base: AsyncSequence, Suffix: AsyncSequence>: AsyncSequence
 where Base.Element == Suffix.Element {
@@ -423,6 +437,8 @@ where Base.Element == Suffix.Element {
         }
     }
 }
+
+extension AsyncSequenceWrapperSeqSuffix: Sendable where Base: Sendable, Suffix: Sendable {}
 
 // MARK: - Convenience Extensions
 public extension AsyncSequence {
