@@ -239,6 +239,28 @@ for try await chunk in handle {
 }
 ```
 
+### Streaming Base64 Encoding
+
+Encode bytes, `Data`, or UTF-8 strings as an `AsyncSequence` of `ArraySlice<UInt8>`
+chunks. Initializers also accept synchronous and asynchronous sequences of byte
+chunks, `Data`, strings, individual bytes, or `Character` values.
+
+```swift
+let encoded = Base64Encoder(handle) // A FileHandle or another async byte-chunk source
+for try await chunk in encoded {
+    // Write the Base64 ASCII bytes to your destination.
+}
+
+let text = Base64Encoder("Hello, world!")
+let pieces = Base64Encoder(["Hello, ", "world!"], chunkSize: 4_096)
+```
+
+The encoder reads on demand, keeps at most two pending bytes across input chunk
+boundaries, and adds `=` padding only at the end. It retains the current input
+chunk's iterator and a bounded output buffer without collecting the whole input.
+`chunkSize` limits output chunks (64 KiB by default) and must be a positive multiple
+of four. Upstream errors and task cancellation propagate to the consumer.
+
 ### Side Effect AsyncSequence
 
 Tap into an `AsyncSequence` to perform side effects on each element without transforming it.
