@@ -86,6 +86,75 @@ struct Base64EncoderTests {
         }
     }
 
+    #if os(macOS)
+    @Test("Output exactly matches the macOS base64 CLI",
+          arguments: [0, 1, 2, 3, 255, 256, 257, 65_535, 65_536, 65_537, 150_001])
+    func macOSCLIAccuracy(length: Int) async throws {
+        // Reproducible binary input, independent of Foundation's Base64 implementation.
+        var seed: UInt64 = 0x4D59_5DF4_D0F3_3173
+        let input = Data((0..<length).map { _ in
+            seed = seed &* 2_862_933_555_777_941_757 &+ 3_037_000_493
+            return UInt8(truncatingIfNeeded: seed >> 32)
+        })
+        let expected = try base64UsingCLI(input)
+
+        // Exercise carry bytes, empty chunks, and chunks larger than the output limit.
+        let widths = [1, 2, 5, 17, 1_021, 65_537]
+        var chunks: [Data] = [Data()]
+        var offset = 0
+        var widthIndex = 0
+        while offset < input.count {
+            let end = min(offset + widths[widthIndex % widths.count], input.count)
+            chunks.append(input[offset..<end])
+            chunks.append(Data())
+            offset = end
+            widthIndex += 1
+        }
+
+        for chunkSize in [4, 64, 65_536] {
+            let encoded = Data(try await collect(Base64Encoder(AsyncValues(chunks), chunkSize: chunkSize)))
+            #expect(encoded == expected, "CLI mismatch for input length \(length), output limit \(chunkSize)")
+            let decoded = try base64UsingCLI(encoded, decode: true)
+            #expect(decoded == input, "CLI failed to round-trip the streaming encoder's output")
+        }
+    }
+
+    @Test("Unicode strings and characters exactly match the macOS base64 CLI")
+    func macOSCLIUnicodeAccuracy() async throws {
+        let strings = ["", "Grüße", " 👩🏽‍💻", " e\u{301}", " 日本語", "\0\n", ""]
+        let text = strings.joined()
+        let expected = Array(try base64UsingCLI(Data(text.utf8)))
+        #expect(try await collect(Base64Encoder(text, chunkSize: 4)) == expected)
+        #expect(try await collect(Base64Encoder(AsyncValues(strings), chunkSize: 4)) == expected)
+        #expect(try await collect(Base64Encoder(AsyncValues(Array(text)), chunkSize: 4)) == expected)
+    }
+
+    private func base64UsingCLI(_ input: Data, decode: Bool = false) throws -> Data {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let inputURL = directory.appendingPathComponent("input")
+        let outputURL = directory.appendingPathComponent("output")
+        try input.write(to: inputURL)
+
+        // File arguments avoid pipe-buffer deadlocks with larger fixtures.
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/base64")
+        process.arguments = (decode ? ["-D"] : ["-b", "0"])
+            + ["-i", inputURL.path, "-o", outputURL.path]
+        try process.run()
+        process.waitUntilExit()
+        try #require(process.terminationReason == .exit && process.terminationStatus == 0,
+                     "macOS base64 CLI failed with status \(process.terminationStatus)")
+
+        var output = try Data(contentsOf: outputURL)
+        // Even with wrapping disabled, macOS base64 appends one presentation newline.
+        // Remove only that newline from encoded output; decoded binary is untouched.
+        if !decode && output.last == 0x0A { output.removeLast() }
+        return output
+    }
+    #endif
+
     @Test("All-empty inputs yield no output")
     func emptyInputs() async throws {
         #expect(try await collect(Base64Encoder(Data())).isEmpty)
