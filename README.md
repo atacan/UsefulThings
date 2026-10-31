@@ -261,6 +261,39 @@ chunk's iterator and a bounded output buffer without collecting the whole input.
 `chunkSize` limits output chunks (64 KiB by default) and must be a positive multiple
 of four. Upstream errors and task cancellation propagate to the consumer.
 
+### Streaming a Base64 Field in a JSON Request Body
+
+Use the prefix/suffix wrapper to place streamed Base64 inside a nested JSON string:
+
+```swift
+let audioFile = try FileHandle(forReadingFrom: audioURL)
+defer { try? audioFile.close() }
+
+let prefix = ArraySlice(
+    #"{"config":{"encoding":"LINEAR16","sampleRateHertz":16000,"languageCode":"en-US"},"input":{"audio":{"content":""#.utf8
+)
+let suffix = ArraySlice(
+    #""},"enableTimestamps":true},"metadata":{"requestId":"streaming-example"}}"#.utf8
+)
+
+let body = Base64Encoder(audioFile)
+    .wrapped(prefix: prefix, suffix: suffix)
+
+// Supply `body` to your HTTP client's streaming request-body API.
+// Content-Type: application/json
+```
+
+The prefix opens the `input.audio.content` string and the suffix closes it. Standard
+Base64 bytes need no JSON escaping, so intermediate chunks go directly between
+those fragments without separators. The HTTP client must consume the sequence as
+a streaming body to keep the upload bounded in memory.
+
+The executable example in
+[`StreamingJSONRequestBodyTests.swift`](Tests/UsefulThingsTests/StreamingJSONRequestBodyTests.swift)
+uses a generated PCM audio file, verifies that sending the prefix does not read the
+file, and decodes the received JSON to recover the exact audio bytes. It covers
+empty audio, padding, and files spanning multiple input and output chunks.
+
 ### Side Effect AsyncSequence
 
 Tap into an `AsyncSequence` to perform side effects on each element without transforming it.
